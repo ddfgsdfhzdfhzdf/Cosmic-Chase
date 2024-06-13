@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>p5.js Game</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script>
+    
+let rocket;
+let obstacles = [];
+let circles = [];
+let gameOver = false;
+let gameOverTime;
+let spawnRate = 10; 
+let lastSpawnTime = 0; // Variable to track the last spawn time
+let lastCircleSpawnTime = 0; // Variable to track the last circle spawn time
+let circleSpawnInterval = 10000; // Circle spawn interval: 10 seconds
+let circlesClicked = 0; // Counter for clicked circles
+let requiredCircles = 20; // Number of circles needed to end the game
+let playerWon = false; // Variable to track if the player won
+
+function setup() {
+    createCanvas(displayWidth, displayHeight);
+    rocket = new Rocket(color(255, 0, 0), 87, 83); // Red rocket, controlled by W and S keys
+}
+
+function draw() {
+    background(0);
+
+    if (!gameOver) {
+        rocket.update();
+        rocket.show();
+
+        // Spawn obstacles based on spawn rate
+        if (millis() - lastSpawnTime > 1000 / spawnRate) {
+            obstacles.push(new Obstacle());
+            lastSpawnTime = millis();
+        }
+
+        // Spawn circles randomly every 10 seconds
+        if (millis() - lastCircleSpawnTime > circleSpawnInterval) {
+            circles.push(new Circle());
+            lastCircleSpawnTime = millis();
+        }
+
+        // Handle collisions with circles
+        for (let i = circles.length - 1; i >= 0; i--) {
+            let circle = circles[i];
+            circle.show();
+            if (rocket.hitsCircle(circle)) {
+                rocket.changeColor(color(255, 255, 0)); // Change rocket color to yellow
+                circles.splice(i, 1); // Remove the circle
+            }
+        }
+
+        // Handle collisions with obstacles
+        for (let obstacle of obstacles) {
+            obstacle.update();
+            obstacle.show();
+
+            if (rocket.hits(obstacle)) {
+                gameOver = true;
+                playerWon = false; // Player lost
+                gameOverTime = millis(); // Record the time when the game over state was triggered
+            }
+        }
+
+        // Check if the required number of circles have been clicked
+        if (circlesClicked >= requiredCircles) {
+            gameOver = true;
+            playerWon = true; // Player won
+            gameOverTime = millis(); // Record the time when the game over state was triggered
+        }
+
+        // Display the number of circles clicked
+        displayCirclesClicked();
+    } else {
+        displayGameOver();
+    }
+
+    // Check if 2 seconds have passed since game over
+    if (gameOver && millis() - gameOverTime > 2000) {
+        noLoop(); // End the game
+        fullscreen(false); // Exit fullscreen mode
+    }
+}
+
+function keyPressed() {
+    if (keyCode === 87 || keyCode === 119) { // W key
+        rocket.move(-15);
+    } else if (keyCode === 83 || keyCode === 115) { // S key
+        rocket.move(15);
+    } else {
+        fullscreen(true);
+    }
+}
+
+function mousePressed() {
+    // Check for clicks on obstacles
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        if (mouseX >= obstacles[i].x && mouseX <= obstacles[i].x + obstacles[i].size &&
+            mouseY >= obstacles[i].y && mouseY <= obstacles[i].y + obstacles[i].size) {
+            obstacles.splice(i, 1);
+            break; // Remove only one obstacle per click
+        }
+    }
+    
+    // Check for clicks on circles
+    for (let i = circles.length - 1; i >= 0; i--) {
+        let d = dist(mouseX, mouseY, circles[i].x, circles[i].y);
+        if (d < circles[i].diameter / 2) {
+            circles.splice(i, 1);
+            circlesClicked++; // Increment the counter for clicked circles
+            break; // Remove only one circle per click
+        }
+    }
+}
+
+function rectRectCollision(x1, y1, w1, h1, x2, y2, w2, h2) {
+    return x1 + w1 >= x2 &&
+           x1 <= x2 + w2 &&
+           y1 + h1 >= y2 &&
+           y1 <= y2 + h2;
+}
+
+class Rocket {
+    constructor(color, upCode, downCode) {
+        this.color = color;
+        this.originalColor = color; // Store original color for reset
+        this.x = 50;
+        this.y = height / 4;
+        this.size = 20;
+        this.upCode = upCode;
+        this.downCode = downCode;
+        this.speedFactor = 1.5; // Adjust this value to increase or decrease the speed
+    }
+
+    update() {
+        this.y = constrain(this.y, this.size / 2, height - this.size / 2);
+    }
+
+    show() {
+        fill(this.color);
+        triangle(this.x, this.y, this.x - this.size, this.y - this.size / 2, this.x - this.size, this.y + this.size / 2);
+    }
+
+    move(step) {
+        if (keyCode === this.upCode) {
+            this.y = constrain(this.y + step * this.speedFactor, this.size / 2, height - this.size / 2);
+        } else if (keyCode === this.downCode) {
+            this.y = constrain(this.y + step * this.speedFactor, this.size / 2, height - this.size / 2);
+        }
+    }
+
+    hits(obstacle) {
+        return rectRectCollision(this.x, this.y - this.size / 2, this.size, this.size, obstacle.x, obstacle.y, obstacle.size, obstacle.size);
+    }
+
+    hitsCircle(circle) {
+        let d = dist(this.x, this.y, circle.x, circle.y);
+        return d < (this.size / 2 + circle.diameter / 2);
+    }
+
+    changeColor(newColor) {
+        this.color = newColor;
+    }
+
+    resetColor() {
+        this.color = this.originalColor;
+    }
+}
+
+class Circle {
+    constructor() {
+        this.diameter = 35;
+        this.x = random(width);
+        this.y = random(height);
+        this.speed = 2; // Adjust this value to control the speed of the circles
+    }
+
+    update() {
+        // Move the circle towards the rocket's x position
+        if (rocket.x < this.x) {
+            this.x -= this.speed;
+        } else {
+            this.x += this.speed;
+        }
+        // Move the circle towards the rocket's y position
+        if (rocket.y < this.y) {
+            this.y -= this.speed;
+        } else {
+            this.y += this.speed;
+        }
+    }
+
+    show() {
+        fill(255, 255, 0); // Yellow color
+        circle(this.x, this.y, this.diameter);
+    }
+}
+
+class Obstacle {
+    constructor() {
+        this.size = random(20, 50);
+        this.x = width;
+        this.y = random(height - this.size);
+        this.speed = 5;
+    }
+
+    update() {
+        this.x -= this.speed;
+    }
+
+    show() {
+        fill(169, 169, 169);
+        rect(this.x, this.y, this.size, this.size);
+    }
+}
+
+function displayCirclesClicked() {
+    fill(255);
+    textSize(32);
+    textAlign(LEFT, TOP);
+  fill(255,255,255)
+    text('Circles clicked: ' + circlesClicked, 10, 10);
+}
+
+function displayGameOver() {
+    background(0);
+    textSize(64);
+    textAlign(CENTER, CENTER);
+    if (playerWon) {
+      fill(0,255,0)
+        text('You Have Won!!', width / 2, height / 2);
+    } else {
+      fill(255,0,0)
+        text('You Have LOST!!', width / 2, height / 2);
+    }
+    textSize(32);
+  fill(130,170,255)
+    text('You clicked ' + circlesClicked + ' circles', width / 2, height / 2 + 50);
+}
+                </script>
+            </head>
+        <body>
+    </body>
+</html>
